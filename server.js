@@ -202,7 +202,7 @@ app.get('/api/health', (req, res) => {
 // Main API endpoint - proxy to Groq
 app.post('/api/analyze', async (req, res) => {
   try {
-    const { prompt, max_tokens = 1000 } = req.body;
+    const { prompt, max_tokens = 1500 } = req.body;
     
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
@@ -227,9 +227,9 @@ app.post('/api/analyze', async (req, res) => {
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'mixtral-8x7b-32768',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+        temperature: 0.2,
         max_tokens: max_tokens
       })
     });
