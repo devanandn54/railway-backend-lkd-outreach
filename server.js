@@ -299,22 +299,37 @@
 //   }
 // });
 
-// server.js - Updated Railway Backend with MCP Integration
+// server_claude.js - Production Server with Claude AI
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
-// MCP Server Configuration
+// Configuration
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8080/mcp';
+const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY; // Your Claude API key
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+
+// User storage (in-memory - use database in production)
+const userUsage = new Map();
+
+// Plans
+const PLANS = {
+  FREE: { name: 'Free', scrapesPerDay: 5, price: 0 },
+  PREMIUM: { 
+    name: 'Premium', 
+    scrapesPerDay: 25, 
+    price: 10,
+    stripeProductId: process.env.STRIPE_PREMIUM_PRODUCT_ID
+  }
+};
 
 // Middleware
 app.use(express.json());
-
-// CORS Configuration
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -324,31 +339,147 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Extension-Id']
 }));
 
-// Rate limiting
-const limiter = rateLimit({
+const globalLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 100,
-  message: { error: 'Too many requests. Try again in an hour.' },
-  standardHeaders: true,
-  legacyHeaders: false,
+  max: 200,
+  message: { error: 'Too many requests. Try again later.' }
 });
 
-app.use('/api/', limiter);
+app.use('/api/', globalLimiter);
 
 // ====================================================================
-// MCP CLIENT - Communicates with LinkedIn MCP Server
+// USER MANAGEMENT
+// ====================================================================
+
+function getUserId(req) {
+  return req.headers['x-extension-id'] || req.ip;
+}
+
+function getUserUsage(userId) {
+  if (!userUsage.has(userId)) {
+    userUsage.set(userId, {
+      scrapesUsed: 0,
+      resetDate: getNextResetDate(),
+      isPremium: false,
+      premiumExpiry: null,
+      scrapeTimes: []
+    });
+  }
+  
+  const usage = userUsage.get(userId);
+  
+  if (new Date() >= new Date(usage.resetDate)) {
+    usage.scrapesUsed = 0;
+    usage.resetDate = getNextResetDate();
+    usage.scrapeTimes = [];
+    userUsage.set(userId, usage);
+  }
+  
+  if (usage.isPremium && usage.premiumExpiry && new Date() >= new Date(usage.premiumExpiry)) {
+    usage.isPremium = false;
+    usage.premiumExpiry = null;
+    userUsage.set(userId, usage);
+  }
+  
+  return usage;
+}
+
+function getNextResetDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  return tomorrow.toISOString();
+}
+
+function canScrape(userId) {
+  const usage = getUserUsage(userId);
+  const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
+  
+  if (usage.scrapesUsed >= limit) {
+    return {
+      allowed: false,
+      reason: 'Daily limit reached',
+      scrapesUsed: usage.scrapesUsed,
+      scrapesLimit: limit,
+      resetDate: usage.resetDate,
+      isPremium: usage.isPremium
+    };
+  }
+  
+  const now = Date.now();
+  const recentScrapes = usage.scrapeTimes.filter(t => now - t < 30000);
+  
+  if (recentScrapes.length > 0) {
+    return {
+      allowed: false,
+      reason: 'Rate limited: Wait 30 seconds between scrapes',
+      scrapesUsed: usage.scrapesUsed,
+      scrapesLimit: limit,
+      waitSeconds: 30
+    };
+  }
+  
+  const last5Minutes = usage.scrapeTimes.filter(t => now - t < 300000);
+  if (last5Minutes.length >= 3) {
+    return {
+      allowed: false,
+      reason: 'Rate limited: Max 3 scrapes per 5 minutes',
+      scrapesUsed: usage.scrapesUsed,
+      scrapesLimit: limit,
+      waitMinutes: 5
+    };
+  }
+  
+  return {
+    allowed: true,
+    scrapesUsed: usage.scrapesUsed,
+    scrapesLimit: limit,
+    scrapesRemaining: limit - usage.scrapesUsed - 1,
+    resetDate: usage.resetDate,
+    isPremium: usage.isPremium
+  };
+}
+
+function recordScrape(userId) {
+  const usage = getUserUsage(userId);
+  usage.scrapesUsed += 1;
+  usage.scrapeTimes.push(Date.now());
+  
+  if (usage.scrapeTimes.length > 10) {
+    usage.scrapeTimes = usage.scrapeTimes.slice(-10);
+  }
+  
+  userUsage.set(userId, usage);
+  console.log(`📊 User ${userId}: ${usage.scrapesUsed}/${usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay} scrapes`);
+}
+
+// ====================================================================
+// MCP CLIENT
 // ====================================================================
 
 class MCPClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
     this.requestId = 0;
+    this.lastRequestTime = 0;
   }
 
-  async callTool(toolName, toolArgs) {
+  async callTool(toolName, args) {
+    // Anti-ban delay: 2-5 seconds
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    const minDelay = 2000 + Math.random() * 3000;
+    
+    if (timeSinceLastRequest < minDelay) {
+      const waitTime = minDelay - timeSinceLastRequest;
+      console.log(`⏳ Anti-ban delay: ${Math.round(waitTime/1000)}s`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
     this.requestId++;
     
     const payload = {
@@ -357,16 +488,18 @@ class MCPClient {
       method: "tools/call",
       params: {
         name: toolName,
-        arguments: toolArgs
+        arguments: {
+          ...args,
+          _internal_use_stealth: true
+        }
       }
     };
 
-    console.log(`📡 Calling MCP tool: ${toolName}`);
+    console.log(`📡 MCP: ${toolName}`);
 
     try {
-      // Use AbortController to enforce a timeout with fetch (node-fetch / global fetch)
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+      const timeout = setTimeout(() => controller.abort(), 90000);
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
@@ -378,13 +511,13 @@ class MCPClient {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        throw new Error(`MCP Server error: ${response.statusText}`);
+        throw new Error(`MCP error: ${response.statusText}`);
       }
 
       const result = await response.json();
 
       if (result.error) {
-        throw new Error(result.error.message || 'Unknown MCP error');
+        throw new Error(result.error.message || 'MCP error');
       }
 
       return result.result || {};
@@ -398,26 +531,119 @@ class MCPClient {
 const mcp = new MCPClient(MCP_SERVER_URL);
 
 // ====================================================================
-// HEALTH CHECKS
+// CLAUDE AI CLIENT
+// ====================================================================
+
+async function generateMessageWithClaude(myProfile, targetProfile, commonalities) {
+  if (!CLAUDE_API_KEY) {
+    throw new Error('CLAUDE_API_KEY not configured');
+  }
+
+  const prompt = buildPrompt(myProfile, targetProfile, commonalities);
+
+  console.log('🤖 Calling Claude AI...');
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022', // Latest Sonnet
+        max_tokens: 300,
+        temperature: 0.7,
+        system: 'You are a professional LinkedIn connection message writer. Create personalized, concise connection requests under 300 characters that feel genuine and highlight real commonalities. Be professional but warm.',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('❌ Claude API error:', error);
+      throw new Error('AI service unavailable');
+    }
+
+    const data = await response.json();
+    const message = data.content[0]?.text || '';
+
+    console.log(`✅ Claude generated ${message.length} char message`);
+    console.log(`💰 Usage: ${data.usage.input_tokens} in, ${data.usage.output_tokens} out tokens`);
+
+    return message;
+
+  } catch (error) {
+    console.error('❌ Claude error:', error.message);
+    throw new Error('AI message generation failed');
+  }
+}
+
+function buildPrompt(myProfile, targetProfile, commonalities) {
+  const myName = myProfile.name?.split(' ')[0] || 'I';
+  const targetName = targetProfile.name?.split(' ')[0] || 'there';
+  const myRole = myProfile.currentRole || myProfile.headline || 'professional';
+  const targetRole = targetProfile.currentRole || targetProfile.headline || 'their role';
+
+  let commonalitiesText = 'No strong commonalities found.';
+  if (commonalities.length > 0) {
+    commonalitiesText = commonalities.map(c => `- ${c.text}`).join('\n');
+  }
+
+  return `Write a LinkedIn connection request message under 300 characters.
+
+MY PROFILE:
+- Name: ${myName}
+- Role: ${myRole}
+- Location: ${myProfile.location || 'Not specified'}
+
+TARGET PROFILE:
+- Name: ${targetName}
+- Role: ${targetRole}
+- Company: ${targetProfile.company || 'Not specified'}
+- Location: ${targetProfile.location || 'Not specified'}
+
+COMMONALITIES:
+${commonalitiesText}
+
+REQUIREMENTS:
+- MUST be under 300 characters (LinkedIn's strict limit)
+- Mention ONE specific commonality if available
+- Professional but warm and conversational tone
+- No generic "I'd love to connect" phrases
+- Clear reason for connecting
+- Natural, not robotic
+
+Write ONLY the message text, no subject or extra text:`;
+}
+
+// ====================================================================
+// HEALTH & STATUS
 // ====================================================================
 
 app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
-    service: 'LinkedIn Connection Finder API',
+    service: 'LinkedIn Connection Finder',
     version: '2.0.0',
-    features: ['groq-ai', 'mcp-scraping'],
+    ai: 'Claude 3.5 Sonnet',
+    features: ['claude-ai', 'mcp-scraping', 'rate-limiting', 'premium'],
     timestamp: new Date().toISOString()
   });
 });
 
 app.get('/api/health', async (req, res) => {
-  // Check MCP server availability
   let mcpStatus = 'unknown';
   try {
     const testResponse = await fetch(MCP_SERVER_URL.replace('/mcp', '/'), { 
       method: 'GET',
-      timeout: 5000 
+      signal: AbortSignal.timeout(5000)
     });
     mcpStatus = testResponse.ok ? 'healthy' : 'unhealthy';
   } catch {
@@ -426,39 +652,93 @@ app.get('/api/health', async (req, res) => {
 
   res.json({ 
     status: 'ok',
-    groqConfigured: !!process.env.GROQ_API_KEY,
+    claudeConfigured: !!CLAUDE_API_KEY,
     mcpServer: mcpStatus,
     mcpUrl: MCP_SERVER_URL,
+    stripeConfigured: !!STRIPE_SECRET_KEY,
     timestamp: new Date().toISOString()
   });
 });
 
+app.get('/api/user/status', (req, res) => {
+  const userId = getUserId(req);
+  const usage = getUserUsage(userId);
+  const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
+  
+  res.json({
+    success: true,
+    data: {
+      scrapesUsed: usage.scrapesUsed,
+      scrapesLimit: limit,
+      scrapesRemaining: limit - usage.scrapesUsed,
+      resetDate: usage.resetDate,
+      isPremium: usage.isPremium,
+      plan: usage.isPremium ? 'Premium' : 'Free',
+      premiumExpiry: usage.premiumExpiry
+    }
+  });
+});
+
 // ====================================================================
-// NEW ENDPOINTS - LinkedIn Profile Scraping via MCP
+// SCRAPING ENDPOINTS
 // ====================================================================
 
 app.post('/api/scrape-profile', async (req, res) => {
-  try {
-    const { url } = req.body;
+  const userId = getUserId(req);
+  const { url, skipRateLimit } = req.body;
 
-    if (!url || !url.includes('linkedin.com/in/')) {
-      return res.status(400).json({ 
+  if (!url || !url.includes('linkedin.com/in/')) {
+    return res.status(400).json({ 
+      success: false,
+      error: 'Valid LinkedIn profile URL required' 
+    });
+  }
+
+  if (!skipRateLimit) {
+    const canScrapeResult = canScrape(userId);
+    
+    if (!canScrapeResult.allowed) {
+      return res.status(429).json({
         success: false,
-        error: 'Valid LinkedIn profile URL required' 
+        error: canScrapeResult.reason,
+        quota: {
+          scrapesUsed: canScrapeResult.scrapesUsed,
+          scrapesLimit: canScrapeResult.scrapesLimit,
+          scrapesRemaining: canScrapeResult.scrapesLimit - canScrapeResult.scrapesUsed,
+          resetDate: canScrapeResult.resetDate,
+          isPremium: canScrapeResult.isPremium
+        },
+        upgradeAvailable: !canScrapeResult.isPremium
       });
     }
+  }
 
-    console.log(`🔍 Scraping profile: ${url}`);
+  try {
+    console.log(`🔍 Scraping: ${url}`);
 
     const profileData = await mcp.callTool('get_person_profile', {
       profile_url: url
     });
 
-    console.log(`✅ Profile scraped: ${profileData.name || 'Unknown'}`);
+    if (!skipRateLimit) {
+      recordScrape(userId);
+    }
+
+    const usage = getUserUsage(userId);
+    const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
+
+    console.log(`✅ Scraped: ${profileData.name || 'Unknown'}`);
 
     res.json({
       success: true,
-      data: profileData
+      data: profileData,
+      quota: {
+        scrapesUsed: usage.scrapesUsed,
+        scrapesLimit: limit,
+        scrapesRemaining: limit - usage.scrapesUsed,
+        resetDate: usage.resetDate,
+        isPremium: usage.isPremium
+      }
     });
 
   } catch (error) {
@@ -470,78 +750,66 @@ app.post('/api/scrape-profile', async (req, res) => {
   }
 });
 
-app.post('/api/scrape-company', async (req, res) => {
-  try {
-    const { url } = req.body;
+app.post('/api/analyze-connection', async (req, res) => {
+  const userId = getUserId(req);
+  const { myProfile, targetUrl } = req.body;
 
-    if (!url || !url.includes('linkedin.com/company/')) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Valid LinkedIn company URL required' 
-      });
-    }
-
-    console.log(`🏢 Scraping company: ${url}`);
-
-    const companyData = await mcp.callTool('get_company_profile', {
-      company_url: url
-    });
-
-    res.json({
-      success: true,
-      data: companyData
-    });
-
-  } catch (error) {
-    console.error('❌ Company scrape error:', error.message);
-    res.status(500).json({
+  if (!myProfile || !targetUrl) {
+    return res.status(400).json({ 
       success: false,
-      error: error.message || 'Failed to scrape company'
+      error: 'Both myProfile and targetUrl required' 
     });
   }
-});
 
-// ====================================================================
-// ENHANCED ANALYZE ENDPOINT - Scraping + AI Analysis
-// ====================================================================
+  const canScrapeResult = canScrape(userId);
+  
+  if (!canScrapeResult.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: canScrapeResult.reason,
+      quota: {
+        scrapesUsed: canScrapeResult.scrapesUsed,
+        scrapesLimit: canScrapeResult.scrapesLimit,
+        scrapesRemaining: canScrapeResult.scrapesLimit - canScrapeResult.scrapesUsed,
+        resetDate: canScrapeResult.resetDate,
+        isPremium: canScrapeResult.isPremium
+      },
+      upgradeAvailable: !canScrapeResult.isPremium
+    });
+  }
 
-app.post('/api/analyze-connection', async (req, res) => {
   try {
-    const { myProfile, targetUrl } = req.body;
+    console.log(`🎯 Analyzing: ${targetUrl}`);
 
-    if (!myProfile || !targetUrl) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Both myProfile and targetUrl required' 
-      });
-    }
-
-    console.log(`🎯 Analyzing connection for: ${targetUrl}`);
-
-    // Step 1: Scrape target profile via MCP
-    console.log('📡 Step 1: Scraping target profile...');
-    const targetProfile = await mcp.callTool('get_person_profile', {
+    // Step 1: Scrape profile
+    const profileData = await mcp.callTool('get_person_profile', {
       profile_url: targetUrl
     });
 
-    console.log(`✅ Target profile: ${targetProfile.name}`);
+    recordScrape(userId);
 
     // Step 2: Find commonalities
-    console.log('🔍 Step 2: Finding commonalities...');
-    const commonalities = findCommonalities(myProfile, targetProfile);
+    const commonalities = findCommonalities(myProfile, profileData);
 
-    // Step 3: Generate AI message with Groq
-    console.log('🤖 Step 3: Generating AI message...');
-    const message = await generateMessageWithGroq(myProfile, targetProfile, commonalities);
+    // Step 3: Generate message with Claude
+    const message = await generateMessageWithClaude(myProfile, profileData, commonalities);
 
-    console.log('✅ Analysis complete!');
+    const usage = getUserUsage(userId);
+    const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
 
     res.json({
       success: true,
       data: {
-        targetProfile,
+        targetProfile: profileData,
         commonalities,
         message
+      },
+      quota: {
+        scrapesUsed: usage.scrapesUsed,
+        scrapesLimit: limit,
+        scrapesRemaining: limit - usage.scrapesUsed,
+        resetDate: usage.resetDate,
+        isPremium: usage.isPremium
       }
     });
 
@@ -561,7 +829,6 @@ app.post('/api/analyze-connection', async (req, res) => {
 function findCommonalities(myProfile, targetProfile) {
   const commonalities = [];
 
-  // 1. Common companies
   const myCompanies = extractCompanies(myProfile.experience || []);
   const targetCompanies = extractCompanies(targetProfile.experience || []);
   const commonCompanies = myCompanies.filter(c => targetCompanies.includes(c));
@@ -574,7 +841,6 @@ function findCommonalities(myProfile, targetProfile) {
     });
   });
 
-  // 2. Common schools
   const mySchools = extractSchools(myProfile.education || []);
   const targetSchools = extractSchools(targetProfile.education || []);
   const commonSchools = mySchools.filter(s => targetSchools.includes(s));
@@ -587,7 +853,6 @@ function findCommonalities(myProfile, targetProfile) {
     });
   });
 
-  // 3. Common skills
   const mySkills = new Set(myProfile.skills || []);
   const targetSkills = new Set(targetProfile.skills || []);
   const commonSkills = [...mySkills].filter(s => targetSkills.has(s));
@@ -600,7 +865,6 @@ function findCommonalities(myProfile, targetProfile) {
     });
   }
 
-  // 4. Location overlap
   if (myProfile.location && targetProfile.location) {
     const myCity = myProfile.location.split(',')[0].trim();
     const targetCity = targetProfile.location.split(',')[0].trim();
@@ -614,7 +878,6 @@ function findCommonalities(myProfile, targetProfile) {
     }
   }
 
-  // 5. Industry overlap (from headlines)
   const myIndustry = extractIndustry(myProfile.headline || '');
   const targetIndustry = extractIndustry(targetProfile.headline || '');
   
@@ -629,122 +892,29 @@ function findCommonalities(myProfile, targetProfile) {
   return commonalities;
 }
 
-async function generateMessageWithGroq(myProfile, targetProfile, commonalities) {
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY not configured');
-  }
-
-  // Build context prompt
-  const prompt = buildPrompt(myProfile, targetProfile, commonalities);
-
-  console.log('📝 Prompt length:', prompt.length);
-
-  const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional LinkedIn connection message writer. Create personalized, concise connection requests that feel genuine and highlight real commonalities.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 500
-    })
-  });
-
-  if (!groqResponse.ok) {
-    const errorData = await groqResponse.text();
-    console.error('❌ Groq API error:', errorData);
-    throw new Error('AI service unavailable');
-  }
-
-  const data = await groqResponse.json();
-  const message = data.choices[0]?.message?.content || '';
-
-  return message;
-}
-
-function buildPrompt(myProfile, targetProfile, commonalities) {
-  const myName = myProfile.name || 'I';
-  const targetName = targetProfile.name || 'them';
-  const myRole = myProfile.currentRole || myProfile.headline || 'professional';
-  const targetRole = targetProfile.currentRole || targetProfile.headline || 'their role';
-
-  let commonalitiesText = 'No strong commonalities found.';
-  if (commonalities.length > 0) {
-    commonalitiesText = commonalities
-      .map(c => `- ${c.text}`)
-      .join('\n');
-  }
-
-  return `Write a personalized LinkedIn connection request message.
-
-MY PROFILE:
-- Name: ${myName}
-- Current Role: ${myRole}
-- Location: ${myProfile.location || 'Not specified'}
-
-TARGET PROFILE:
-- Name: ${targetName}
-- Current Role: ${targetRole}
-- Location: ${targetProfile.location || 'Not specified'}
-- Company: ${targetProfile.company || 'Not specified'}
-
-COMMONALITIES:
-${commonalitiesText}
-
-REQUIREMENTS:
-- Keep it under 300 characters (LinkedIn limit)
-- Be genuine and professional
-- Mention ONE specific commonality if available
-- If no commonalities, mention their work/industry
-- Don't be salesy or pushy
-- End with a clear call to action
-
-Write ONLY the message text, no subject line or extra formatting:`;
-}
-
 function extractCompanies(experienceList) {
   const companies = [];
-  
   experienceList.forEach(exp => {
     if (typeof exp === 'object' && exp.company) {
       companies.push(exp.company);
     } else if (typeof exp === 'string') {
       const lines = exp.split('\n');
-      if (lines.length >= 2) {
-        companies.push(lines[1].trim());
-      }
+      if (lines.length >= 2) companies.push(lines[1].trim());
     }
   });
-  
   return [...new Set(companies)];
 }
 
 function extractSchools(educationList) {
   const schools = [];
-  
   educationList.forEach(edu => {
     if (typeof edu === 'object' && edu.school) {
       schools.push(edu.school);
     } else if (typeof edu === 'string') {
       const lines = edu.split('\n');
-      if (lines.length >= 1) {
-        schools.push(lines[0].trim());
-      }
+      if (lines.length >= 1) schools.push(lines[0].trim());
     }
   });
-  
   return [...new Set(schools)];
 }
 
@@ -757,116 +927,97 @@ function extractIndustry(headline) {
     'marketing': 'Marketing',
     'sales': 'Sales',
     'data': 'Data Science',
-    'analyst': 'Analytics',
-    'manager': 'Management',
-    'recruiter': 'Recruiting',
-    'consultant': 'Consulting'
+    'analyst': 'Analytics'
   };
 
   const headlineLower = headline.toLowerCase();
-  
   for (const [keyword, industry] of Object.entries(industries)) {
-    if (headlineLower.includes(keyword)) {
-      return industry;
-    }
+    if (headlineLower.includes(keyword)) return industry;
   }
-
   return null;
 }
 
 // ====================================================================
-// LEGACY ENDPOINT - Keep for backward compatibility
+// PAYMENT (Stripe) - Same as before
 // ====================================================================
 
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/create-checkout-session', async (req, res) => {
+  if (!STRIPE_SECRET_KEY) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  const userId = getUserId(req);
+  const { planType } = req.body;
+
+  if (planType !== 'PREMIUM') {
+    return res.status(400).json({ error: 'Invalid plan type' });
+  }
+
   try {
-    const { prompt, max_tokens = 1500 } = req.body;
-    
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
-    
-    if (prompt.length > 10000) {
-      return res.status(400).json({ error: 'Prompt too long' });
-    }
+    const stripe = require('stripe')(STRIPE_SECRET_KEY);
 
-    if (!process.env.GROQ_API_KEY) {
-      return res.status(500).json({ error: 'API key not configured' });
-    }
-
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: max_tokens
-      })
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: PLANS.PREMIUM.stripeProductId,
+          quantity: 1,
+        },
+      ],
+      success_url: `chrome-extension://${req.headers['x-extension-id']}/success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `chrome-extension://${req.headers['x-extension-id']}/popup.html`,
+      client_reference_id: userId,
+      metadata: { userId: userId }
     });
 
-    if (!groqResponse.ok) {
-      const errorData = await groqResponse.text();
-      console.error('❌ Groq API error:', errorData);
-      return res.status(groqResponse.status).json({ 
-        error: 'AI service unavailable' 
-      });
-    }
-
-    const data = await groqResponse.json();
-    const content = data.choices[0]?.message?.content || '';
-
     res.json({ 
-      success: true, 
-      content: content,
-      usage: data.usage
+      success: true,
+      sessionId: session.id,
+      url: session.url 
     });
 
   } catch (error) {
-    console.error('❌ Server error:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message
-    });
+    console.error('Stripe error:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
   }
 });
 
-// Analytics endpoint
-app.post('/api/stats', async (req, res) => {
-  try {
-    const { event, version, persona } = req.body;
-    
-    console.log('📊 Analytics:', { 
-      event, 
-      version, 
-      persona,
-      timestamp: new Date().toISOString(),
-      ip: req.ip
-    });
-    
-    res.json({ success: true });
-  } catch (error) {
-    res.json({ success: false });
+app.post('/api/admin/activate-premium', (req, res) => {
+  const { userId, days = 30 } = req.body;
+  const adminKey = req.headers['x-admin-key'];
+
+  if (adminKey !== process.env.ADMIN_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const usage = getUserUsage(userId);
+  usage.isPremium = true;
+  
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + days);
+  usage.premiumExpiry = expiry.toISOString();
+  
+  userUsage.set(userId, usage);
+
+  res.json({ 
+    success: true,
+    message: `Premium activated for ${days} days`,
+    expiry: usage.premiumExpiry
+  });
 });
 
 // Error handling
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err);
+  console.error('❌ Error:', err);
   res.status(500).json({ error: 'Something went wrong' });
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔑 GROQ_API_KEY configured: ${!!process.env.GROQ_API_KEY}`);
-  console.log(`🌐 MCP_SERVER_URL: ${MCP_SERVER_URL}`);
-  
-  if (!process.env.GROQ_API_KEY) {
-    console.error('⚠️  WARNING: GROQ_API_KEY is not set!');
-  }
+  console.log(`🤖 AI: Claude ${CLAUDE_API_KEY ? '✓' : '✗'}`);
+  console.log(`📡 MCP: ${MCP_SERVER_URL}`);
+  console.log(`💳 Stripe: ${STRIPE_SECRET_KEY ? '✓' : '✗'}`);
+  console.log(`\n📊 Limits: Free ${PLANS.FREE.scrapesPerDay}/day, Premium ${PLANS.PREMIUM.scrapesPerDay}/day`);
 });
