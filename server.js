@@ -661,6 +661,35 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+app.get("/api/debug-mcp", async (req, res) => {
+  try {
+    const r = await fetch(MCP_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {}
+      })
+    });
+
+    const text = await r.text();
+
+    res.json({
+      ok: r.ok,
+      status: r.status,
+      body: text
+    });
+  } catch (e) {
+    res.json({
+      error: e.message,
+      stack: e.stack
+    });
+  }
+});
+
+
 app.get('/api/user/status', (req, res) => {
   const userId = getUserId(req);
   const usage = getUserUsage(userId);
