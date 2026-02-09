@@ -1,305 +1,4 @@
-// // // server.js - Railway Backend for LinkedIn Connection Finder
-
-// // const express = require('express');
-// // const cors = require('cors');
-// // const rateLimit = require('express-rate-limit');
-// // require('dotenv').config();
-
-// // const app = express();
-// // const PORT = process.env.PORT || 3000;
-
-// // // Middleware
-// // app.use(express.json());
-// // app.use(cors({
-// //   origin: [
-// //     'chrome-extension://*',
-// //     'https://*.chromium.org',
-// //     'http://localhost:*'
-// //   ]
-// // }));
-
-// // // Rate limiting: 100 requests per hour per IP
-// // const limiter = rateLimit({
-// //   windowMs: 60 * 60 * 1000, // 1 hour
-// //   max: 100,
-// //   message: { error: 'Too many requests. Try again in an hour.' },
-// //   standardHeaders: true,
-// //   legacyHeaders: false,
-// // });
-
-// // app.use('/api/', limiter);
-
-// // // Health check
-// // app.get('/', (req, res) => {
-// //   res.json({ 
-// //     status: 'ok', 
-// //     service: 'LinkedIn Connection Finder API',
-// //     version: '1.0.0'
-// //   });
-// // });
-
-// // // Main API endpoint - proxy to Groq
-// // app.post('/api/analyze', async (req, res) => {
-// //   try {
-// //     const { prompt, max_tokens = 1000 } = req.body;
-
-// //     if (!prompt) {
-// //       return res.status(400).json({ error: 'Prompt is required' });
-// //     }
-
-// //     if (prompt.length > 10000) {
-// //       return res.status(400).json({ error: 'Prompt too long' });
-// //     }
-
-// //     // Call Groq API with YOUR secret key
-// //     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-// //       method: 'POST',
-// //       headers: {
-// //         'Content-Type': 'application/json',
-// //         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-// //       },
-// //       body: JSON.stringify({
-// //         model: 'llama-3.3-70b-versatile',
-// //         messages: [{ role: 'user', content: prompt }],
-// //         temperature: 0.7,
-// //         max_tokens: max_tokens
-// //       })
-// //     });
-
-// //     if (!groqResponse.ok) {
-// //       const errorData = await groqResponse.text();
-// //       console.error('Groq API error:', errorData);
-// //       return res.status(groqResponse.status).json({ 
-// //         error: 'AI service unavailable. Please try again.' 
-// //       });
-// //     }
-
-// //     const data = await groqResponse.json();
-// //     const content = data.choices[0]?.message?.content || '';
-
-// //     res.json({ 
-// //       success: true, 
-// //       content: content,
-// //       usage: data.usage // Track token usage for monitoring
-// //     });
-
-// //   } catch (error) {
-// //     console.error('Server error:', error);
-// //     res.status(500).json({ 
-// //       error: 'Internal server error. Please try again.' 
-// //     });
-// //   }
-// // });
-
-// // // Analytics endpoint (optional - track usage)
-// // app.post('/api/stats', async (req, res) => {
-// //   try {
-// //     const { event, version, persona } = req.body;
-    
-// //     // Log to console (you can add database later)
-// //     console.log('Analytics:', { 
-// //       event, 
-// //       version, 
-// //       persona,
-// //       timestamp: new Date().toISOString(),
-// //       ip: req.ip
-// //     });
-
-// //     res.json({ success: true });
-// //   } catch (error) {
-// //     console.error('Stats error:', error);
-// //     res.json({ success: false });
-// //   }
-// // });
-
-// // // Error handling
-// // app.use((err, req, res, next) => {
-// //   console.error('Unhandled error:', err);
-// //   res.status(500).json({ error: 'Something went wrong' });
-// // });
-
-// // // Start server
-// // app.listen(PORT, () => {
-// //   console.log(`🚀 Server running on port ${PORT}`);
-// //   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-// // });
-
-
-
-
-// // server.js - Railway Backend for LinkedIn Connection Finder
-// const express = require('express');
-// const cors = require('cors');
-// const rateLimit = require('express-rate-limit');
-// require('dotenv').config();
-
-// const app = express();
-// const PORT = process.env.PORT || 3000;
-
-// // Middleware
-// app.use(express.json());
-
-// // ✅ FIXED CORS CONFIGURATION
-// app.use(cors({
-//   origin: function (origin, callback) {
-//     // Allow requests with no origin (mobile apps, curl, postman)
-//     if (!origin) return callback(null, true);
-    
-//     // Allow Chrome extensions (they have chrome-extension:// protocol)
-//     if (origin.startsWith('chrome-extension://')) {
-//       return callback(null, true);
-//     }
-    
-//     // Allow localhost for testing
-//     if (origin.includes('localhost')) {
-//       return callback(null, true);
-//     }
-    
-//     // Allow all origins (you can restrict this later if needed)
-//     return callback(null, true);
-//   },
-//   credentials: true,
-//   methods: ['GET', 'POST', 'OPTIONS'],
-//   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
-// }));
-
-// // OR USE THIS SIMPLER VERSION (allows everything):
-// // app.use(cors({
-// //   origin: '*',
-// //   methods: ['GET', 'POST', 'OPTIONS']
-// // }));
-
-// // Rate limiting: 100 requests per hour per IP
-// const limiter = rateLimit({
-//   windowMs: 60 * 60 * 1000, // 1 hour
-//   max: 100,
-//   message: { error: 'Too many requests. Try again in an hour.' },
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
-
-// app.use('/api/', limiter);
-
-// // Health check
-// app.get('/', (req, res) => {
-//   res.json({ 
-//     status: 'ok', 
-//     service: 'LinkedIn Connection Finder API',
-//     version: '1.0.0',
-//     timestamp: new Date().toISOString()
-//   });
-// });
-
-// // ✅ ADDED: Explicit health endpoint for extension to test
-// app.get('/api/health', (req, res) => {
-//   res.json({ 
-//     status: 'ok',
-//     groqConfigured: !!process.env.GROQ_API_KEY,
-//     timestamp: new Date().toISOString()
-//   });
-// });
-
-// // Main API endpoint - proxy to Groq
-// app.post('/api/analyze', async (req, res) => {
-//   try {
-//     const { prompt, max_tokens = 1500 } = req.body;
-    
-//     if (!prompt) {
-//       return res.status(400).json({ error: 'Prompt is required' });
-//     }
-    
-//     if (prompt.length > 10000) {
-//       return res.status(400).json({ error: 'Prompt too long' });
-//     }
-
-//     if (!process.env.GROQ_API_KEY) {
-//       console.error('❌ GROQ_API_KEY not set!');
-//       return res.status(500).json({ error: 'API key not configured' });
-//     }
-
-//     console.log('📥 Received analyze request. Prompt length:', prompt.length);
-
-//     // Call Groq API with YOUR secret key
-//     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-//       method: 'POST',
-//       headers: {
-//         'Content-Type': 'application/json',
-//         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-//       },
-//       body: JSON.stringify({
-//         model: 'llama-3.3-70b-versatile',
-//         messages: [{ role: 'user', content: prompt }],
-//         temperature: 0.3,
-//         max_tokens: max_tokens
-//       })
-//     });
-
-//     if (!groqResponse.ok) {
-//       const errorData = await groqResponse.text();
-//       console.error('❌ Groq API error:', errorData);
-//       return res.status(groqResponse.status).json({ 
-//         error: 'AI service unavailable. Please try again.' 
-//       });
-//     }
-
-//     const data = await groqResponse.json();
-//     const content = data.choices[0]?.message?.content || '';
-
-//     console.log('✅ Successfully generated response. Length:', content.length);
-
-//     res.json({ 
-//       success: true, 
-//       content: content,
-//       usage: data.usage // Track token usage for monitoring
-//     });
-
-//   } catch (error) {
-//     console.error('❌ Server error:', error);
-//     res.status(500).json({ 
-//       error: 'Internal server error. Please try again.',
-//       message: error.message
-//     });
-//   }
-// });
-
-// // Analytics endpoint (optional - track usage)
-// app.post('/api/stats', async (req, res) => {
-//   try {
-//     const { event, version, persona } = req.body;
-    
-//     // Log to console (you can add database later)
-//     console.log('📊 Analytics:', { 
-//       event, 
-//       version, 
-//       persona,
-//       timestamp: new Date().toISOString(),
-//       ip: req.ip
-//     });
-    
-//     res.json({ success: true });
-//   } catch (error) {
-//     console.error('Stats error:', error);
-//     res.json({ success: false });
-//   }
-// });
-
-// // Error handling
-// app.use((err, req, res, next) => {
-//   console.error('❌ Unhandled error:', err);
-//   res.status(500).json({ error: 'Something went wrong' });
-// });
-
-// // Start server
-// app.listen(PORT, () => {
-//   console.log(`🚀 Server running on port ${PORT}`);
-//   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-//   console.log(`🔑 GROQ_API_KEY configured: ${!!process.env.GROQ_API_KEY}`);
-//   if (!process.env.GROQ_API_KEY) {
-//     console.error('⚠️  WARNING: GROQ_API_KEY is not set!');
-//   }
-// });
-
-// server_claude.js - Production Server with Claude AI
+// server.js - Production Server v3: Claude AI + MCP (fixed) + RapidAPI Fallback
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -311,7 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 // Configuration
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8080/mcp';
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY; // Your Claude API key
+const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY; // Optional fallback
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -458,7 +158,7 @@ function recordScrape(userId) {
 }
 
 // ====================================================================
-// MCP CLIENT
+// MCP CLIENT (FIXED for stickerdaniel/linkedin-mcp-server responses)
 // ====================================================================
 
 class MCPClient {
@@ -469,14 +169,14 @@ class MCPClient {
   }
 
   async callTool(toolName, args) {
-    // Anti-ban delay: 2-5 seconds
+    // Anti-ban delay: 2-5 seconds between requests
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
     const minDelay = 2000 + Math.random() * 3000;
     
     if (timeSinceLastRequest < minDelay) {
       const waitTime = minDelay - timeSinceLastRequest;
-      console.log(`⏳ Anti-ban delay: ${Math.round(waitTime/1000)}s`);
+      console.log(`⏳ Anti-ban delay: ${Math.round(waitTime / 1000)}s`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
@@ -489,19 +189,16 @@ class MCPClient {
       method: "tools/call",
       params: {
         name: toolName,
-        arguments: {
-          ...args,
-          _internal_use_stealth: true
-        }
+        arguments: args
       }
     };
 
-    console.log(`📡 MCP: ${toolName}`);
+    console.log(`📡 MCP → ${toolName}`, JSON.stringify(args));
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 90000);
-
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -512,18 +209,44 @@ class MCPClient {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        throw new Error(`MCP error: ${response.statusText}`);
+        const errBody = await response.text().catch(() => response.statusText);
+        throw new Error(`MCP ${response.status}: ${errBody}`);
       }
 
       const result = await response.json();
 
       if (result.error) {
-        throw new Error(result.error.message || 'MCP error');
+        throw new Error(result.error.message || JSON.stringify(result.error));
+      }
+
+      // ============================================================
+      // CRITICAL FIX: stickerdaniel/linkedin-mcp-server returns:
+      // { result: { content: [{ type: "text", text: "{...JSON...}" }] } }
+      // Your old code did: return result.result || {}
+      // That returned { content: [...] } instead of the actual profile!
+      // ============================================================
+      const content = result.result?.content;
+      if (Array.isArray(content)) {
+        const textBlock = content.find(c => c.type === 'text');
+        if (textBlock && textBlock.text) {
+          try {
+            return JSON.parse(textBlock.text);
+          } catch {
+            // Not JSON — return as-is wrapped
+            return { raw: textBlock.text, name: '', headline: '' };
+          }
+        }
+      }
+
+      // Fallback: maybe result itself is profile data
+      if (result.result && (result.result.name || result.result.full_name)) {
+        return result.result;
       }
 
       return result.result || {};
     } catch (error) {
-      console.error('❌ MCP Error:', error.message);
+      clearTimeout(timeout);
+      console.error(`❌ MCP Error [${toolName}]:`, error.message);
       throw error;
     }
   }
@@ -532,16 +255,120 @@ class MCPClient {
 const mcp = new MCPClient(MCP_SERVER_URL);
 
 // ====================================================================
+// RAPIDAPI FALLBACK SCRAPER
+// ====================================================================
+
+async function scrapeViaRapidAPI(username) {
+  if (!RAPIDAPI_KEY) throw new Error('RapidAPI fallback not configured');
+
+  console.log(`🔄 RapidAPI fallback → @${username}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(
+      `https://fresh-linkedin-scraper-api.p.rapidapi.com/api/v1/user/profile?username=${encodeURIComponent(username)}`,
+      {
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'fresh-linkedin-scraper-api.p.rapidapi.com'
+        },
+        signal: controller.signal
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) throw new Error(`RapidAPI ${response.status}`);
+    const data = await response.json();
+    if (!data.success || !data.data) throw new Error('RapidAPI empty response');
+
+    const p = data.data;
+    return {
+      name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.full_name || '',
+      headline: p.headline || '',
+      location: p.city || p.location || '',
+      company: p.experiences?.[0]?.company || p.company || '',
+      currentRole: p.experiences?.[0]?.title || p.headline || '',
+      experience: (p.experiences || []).map(e => ({
+        title: e.title || '', company: e.company || e.company_name || '', duration: e.duration || ''
+      })),
+      education: (p.educations || []).map(e => ({
+        school: e.school || e.school_name || '', degree: e.degree || '', field: e.field_of_study || ''
+      })),
+      skills: (p.skills || []).map(s => typeof s === 'string' ? s : s.name || '').filter(Boolean),
+      about: p.summary || p.about || ''
+    };
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+// ====================================================================
+// UNIFIED SCRAPE: MCP primary → RapidAPI fallback
+// ====================================================================
+
+function extractUsername(url) {
+  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
+
+function normalizeProfile(raw) {
+  return {
+    name: raw.name || raw.full_name || '',
+    headline: raw.headline || raw.title || '',
+    location: raw.location || '',
+    company: raw.company || raw.current_company ||
+             (Array.isArray(raw.experience) && raw.experience[0]?.company) ||
+             (Array.isArray(raw.experiences) && raw.experiences[0]?.company) || '',
+    currentRole: raw.current_role || raw.headline || '',
+    experience: Array.isArray(raw.experience) ? raw.experience :
+                Array.isArray(raw.experiences) ? raw.experiences : [],
+    education: Array.isArray(raw.education) ? raw.education :
+               Array.isArray(raw.educations) ? raw.educations : [],
+    skills: Array.isArray(raw.skills) ? raw.skills.map(s =>
+      typeof s === 'string' ? s : (s.name || s.skill || '')
+    ).filter(Boolean) : [],
+    about: raw.about || raw.summary || ''
+  };
+}
+
+async function scrapeProfile(url) {
+  const username = extractUsername(url);
+  if (!username) throw new Error('Invalid LinkedIn profile URL');
+
+  // Try MCP first
+  try {
+    const rawProfile = await mcp.callTool('get_person_profile', { profile_url: url });
+    const profile = normalizeProfile(rawProfile);
+    console.log(`✅ MCP scraped: ${profile.name || username}`);
+    return profile;
+  } catch (mcpError) {
+    console.warn(`⚠️ MCP failed: ${mcpError.message}`);
+  }
+
+  // Fallback to RapidAPI
+  if (RAPIDAPI_KEY) {
+    try {
+      const profile = await scrapeViaRapidAPI(username);
+      console.log(`✅ RapidAPI scraped: ${profile.name || username}`);
+      return profile;
+    } catch (rapidError) {
+      console.error(`❌ RapidAPI also failed: ${rapidError.message}`);
+    }
+  }
+
+  throw new Error(`Could not scrape @${username}. MCP server may be down or li_at cookie expired. Check /api/health`);
+}
+
+// ====================================================================
 // CLAUDE AI CLIENT
 // ====================================================================
 
 async function generateMessageWithClaude(myProfile, targetProfile, commonalities) {
-  if (!CLAUDE_API_KEY) {
-    throw new Error('CLAUDE_API_KEY not configured');
-  }
+  if (!CLAUDE_API_KEY) throw new Error('CLAUDE_API_KEY not configured');
 
   const prompt = buildPrompt(myProfile, targetProfile, commonalities);
-
   console.log('🤖 Calling Claude AI...');
 
   try {
@@ -553,33 +380,32 @@ async function generateMessageWithClaude(myProfile, targetProfile, commonalities
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022', // Latest Sonnet
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 300,
         temperature: 0.7,
-        system: 'You are a professional LinkedIn connection message writer. Create personalized, concise connection requests under 300 characters that feel genuine and highlight real commonalities. Be professional but warm.',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
+        system: `You write personalized LinkedIn connection request notes. Rules:
+- MUST be under 300 characters (LinkedIn hard limit)
+- Sound genuinely human, warm, professional
+- Reference ONE specific commonality if available
+- Adapt tone: respectful for directors/VPs, collegial for peers, interested for recruiters
+- Never salesy, never use buzzwords
+- End with soft CTA
+- Write ONLY the message text`,
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({}));
       console.error('❌ Claude API error:', error);
       throw new Error('AI service unavailable');
     }
 
     const data = await response.json();
     const message = data.content[0]?.text || '';
+    console.log(`✅ Claude: ${message.length} chars | ${data.usage?.input_tokens || '?'}in/${data.usage?.output_tokens || '?'}out tokens`);
 
-    console.log(`✅ Claude generated ${message.length} char message`);
-    console.log(`💰 Usage: ${data.usage.input_tokens} in, ${data.usage.output_tokens} out tokens`);
-
-    return message;
-
+    return message.length > 300 ? message.substring(0, 297) + '...' : message;
   } catch (error) {
     console.error('❌ Claude error:', error.message);
     throw new Error('AI message generation failed');
@@ -594,34 +420,27 @@ function buildPrompt(myProfile, targetProfile, commonalities) {
 
   let commonalitiesText = 'No strong commonalities found.';
   if (commonalities.length > 0) {
-    commonalitiesText = commonalities.map(c => `- ${c.text}`).join('\n');
+    commonalitiesText = commonalities.map(c => `- ${c.text} (${c.strength})`).join('\n');
   }
 
-  return `Write a LinkedIn connection request message under 300 characters.
+  let resumeContext = '';
+  if (myProfile.resume) {
+    resumeContext = `\nResume highlights: ${myProfile.resume.substring(0, 400)}`;
+  }
 
-MY PROFILE:
-- Name: ${myName}
-- Role: ${myRole}
-- Location: ${myProfile.location || 'Not specified'}
+  return `Write a LinkedIn connection request under 300 characters.
 
-TARGET PROFILE:
-- Name: ${targetName}
-- Role: ${targetRole}
-- Company: ${targetProfile.company || 'Not specified'}
-- Location: ${targetProfile.location || 'Not specified'}
+ME: ${myName} — ${myRole}
+Location: ${myProfile.location || 'N/A'}${resumeContext}
+
+TARGET: ${targetName} — ${targetRole}
+Company: ${targetProfile.company || 'N/A'}
+Location: ${targetProfile.location || 'N/A'}
 
 COMMONALITIES:
 ${commonalitiesText}
 
-REQUIREMENTS:
-- MUST be under 300 characters (LinkedIn's strict limit)
-- Mention ONE specific commonality if available
-- Professional but warm and conversational tone
-- No generic "I'd love to connect" phrases
-- Clear reason for connecting
-- Natural, not robotic
-
-Write ONLY the message text, no subject or extra text:`;
+Write ONLY the message (under 300 chars):`;
 }
 
 // ====================================================================
@@ -632,9 +451,9 @@ app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
     service: 'LinkedIn Connection Finder',
-    version: '2.0.0',
-    ai: 'Claude 3.5 Sonnet',
-    features: ['claude-ai', 'mcp-scraping', 'rate-limiting', 'premium'],
+    version: '3.0.0',
+    ai: 'Claude Sonnet',
+    features: ['claude-ai', 'mcp-scraping', 'rapidapi-fallback', 'rate-limiting', 'premium'],
     timestamp: new Date().toISOString()
   });
 });
@@ -642,10 +461,13 @@ app.get('/', (req, res) => {
 app.get('/api/health', async (req, res) => {
   let mcpStatus = 'unknown';
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     const testResponse = await fetch(MCP_SERVER_URL.replace('/mcp', '/'), { 
       method: 'GET',
-      signal: AbortSignal.timeout(5000)
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     mcpStatus = testResponse.ok ? 'healthy' : 'unhealthy';
   } catch {
     mcpStatus = 'unreachable';
@@ -654,6 +476,7 @@ app.get('/api/health', async (req, res) => {
   res.json({ 
     status: 'ok',
     claudeConfigured: !!CLAUDE_API_KEY,
+    rapidApiConfigured: !!RAPIDAPI_KEY,
     mcpServer: mcpStatus,
     mcpUrl: MCP_SERVER_URL,
     stripeConfigured: !!STRIPE_SECRET_KEY,
@@ -673,22 +496,12 @@ app.get("/api/debug-mcp", async (req, res) => {
         params: {}
       })
     });
-
     const text = await r.text();
-
-    res.json({
-      ok: r.ok,
-      status: r.status,
-      body: text
-    });
+    res.json({ ok: r.ok, status: r.status, body: text });
   } catch (e) {
-    res.json({
-      error: e.message,
-      stack: e.stack
-    });
+    res.json({ error: e.message });
   }
 });
-
 
 app.get('/api/user/status', (req, res) => {
   const userId = getUserId(req);
@@ -718,15 +531,11 @@ app.post('/api/scrape-profile', async (req, res) => {
   const { url, skipRateLimit } = req.body;
 
   if (!url || !url.includes('linkedin.com/in/')) {
-    return res.status(400).json({ 
-      success: false,
-      error: 'Valid LinkedIn profile URL required' 
-    });
+    return res.status(400).json({ success: false, error: 'Valid LinkedIn profile URL required' });
   }
 
   if (!skipRateLimit) {
     const canScrapeResult = canScrape(userId);
-    
     if (!canScrapeResult.allowed) {
       return res.status(429).json({
         success: false,
@@ -745,19 +554,12 @@ app.post('/api/scrape-profile', async (req, res) => {
 
   try {
     console.log(`🔍 Scraping: ${url}`);
+    const profileData = await scrapeProfile(url);
 
-    const profileData = await mcp.callTool('get_person_profile', {
-      profile_url: url
-    });
-
-    if (!skipRateLimit) {
-      recordScrape(userId);
-    }
+    if (!skipRateLimit) recordScrape(userId);
 
     const usage = getUserUsage(userId);
     const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
-
-    console.log(`✅ Scraped: ${profileData.name || 'Unknown'}`);
 
     res.json({
       success: true,
@@ -770,13 +572,24 @@ app.post('/api/scrape-profile', async (req, res) => {
         isPremium: usage.isPremium
       }
     });
-
   } catch (error) {
     console.error('❌ Scrape error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to scrape profile'
-    });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/scrape-company', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !url.includes('linkedin.com/company/')) {
+      return res.status(400).json({ success: false, error: 'Valid LinkedIn company URL required' });
+    }
+    console.log(`🏢 Scraping company: ${url}`);
+    const companyData = await mcp.callTool('get_company_profile', { company_url: url });
+    res.json({ success: true, data: companyData });
+  } catch (error) {
+    console.error('❌ Company scrape error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -785,14 +598,10 @@ app.post('/api/analyze-connection', async (req, res) => {
   const { myProfile, targetUrl } = req.body;
 
   if (!myProfile || !targetUrl) {
-    return res.status(400).json({ 
-      success: false,
-      error: 'Both myProfile and targetUrl required' 
-    });
+    return res.status(400).json({ success: false, error: 'Both myProfile and targetUrl required' });
   }
 
   const canScrapeResult = canScrape(userId);
-  
   if (!canScrapeResult.allowed) {
     return res.status(429).json({
       success: false,
@@ -811,29 +620,24 @@ app.post('/api/analyze-connection', async (req, res) => {
   try {
     console.log(`🎯 Analyzing: ${targetUrl}`);
 
-    // Step 1: Scrape profile
-    const profileData = await mcp.callTool('get_person_profile', {
-      profile_url: targetUrl
-    });
-
+    // Step 1: Scrape target (MCP → RapidAPI fallback)
+    const targetProfile = await scrapeProfile(targetUrl);
     recordScrape(userId);
+    console.log(`✅ Target: ${targetProfile.name}`);
 
     // Step 2: Find commonalities
-    const commonalities = findCommonalities(myProfile, profileData);
+    const commonalities = findCommonalities(myProfile, targetProfile);
+    console.log(`📊 ${commonalities.length} commonalities`);
 
     // Step 3: Generate message with Claude
-    const message = await generateMessageWithClaude(myProfile, profileData, commonalities);
+    const message = await generateMessageWithClaude(myProfile, targetProfile, commonalities);
 
     const usage = getUserUsage(userId);
     const limit = usage.isPremium ? PLANS.PREMIUM.scrapesPerDay : PLANS.FREE.scrapesPerDay;
 
     res.json({
       success: true,
-      data: {
-        targetProfile: profileData,
-        commonalities,
-        message
-      },
+      data: { targetProfile, commonalities, message },
       quota: {
         scrapesUsed: usage.scrapesUsed,
         scrapesLimit: limit,
@@ -842,18 +646,14 @@ app.post('/api/analyze-connection', async (req, res) => {
         isPremium: usage.isPremium
       }
     });
-
   } catch (error) {
     console.error('❌ Analysis error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to analyze connection'
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // ====================================================================
-// HELPER FUNCTIONS
+// COMMONALITY ENGINE (improved: case-insensitive)
 // ====================================================================
 
 function findCommonalities(myProfile, targetProfile) {
@@ -861,152 +661,98 @@ function findCommonalities(myProfile, targetProfile) {
 
   const myCompanies = extractCompanies(myProfile.experience || []);
   const targetCompanies = extractCompanies(targetProfile.experience || []);
-  const commonCompanies = myCompanies.filter(c => targetCompanies.includes(c));
-
-  commonCompanies.forEach(company => {
-    commonalities.push({
-      type: 'company',
-      text: `Both worked at ${company}`,
-      strength: 'high'
-    });
-  });
+  myCompanies.filter(c => targetCompanies.some(tc => tc.toLowerCase() === c.toLowerCase()))
+    .forEach(company => commonalities.push({ type: 'company', text: `Both worked at ${company}`, strength: 'high' }));
 
   const mySchools = extractSchools(myProfile.education || []);
   const targetSchools = extractSchools(targetProfile.education || []);
-  const commonSchools = mySchools.filter(s => targetSchools.includes(s));
+  mySchools.filter(s => targetSchools.some(ts => ts.toLowerCase() === s.toLowerCase()))
+    .forEach(school => commonalities.push({ type: 'education', text: `Both studied at ${school}`, strength: 'high' }));
 
-  commonSchools.forEach(school => {
-    commonalities.push({
-      type: 'education',
-      text: `Both studied at ${school}`,
-      strength: 'high'
-    });
-  });
-
-  const mySkills = new Set(myProfile.skills || []);
-  const targetSkills = new Set(targetProfile.skills || []);
+  const norm = s => (typeof s === 'string' ? s : (s?.name || s?.skill || '')).toLowerCase().trim();
+  const mySkills = new Set((myProfile.skills || []).map(norm).filter(Boolean));
+  const targetSkills = new Set((targetProfile.skills || []).map(norm).filter(Boolean));
   const commonSkills = [...mySkills].filter(s => targetSkills.has(s));
-
-  if (commonSkills.length >= 3) {
+  if (commonSkills.length >= 2) {
     commonalities.push({
       type: 'skills',
-      text: `Shared skills: ${commonSkills.slice(0, 3).join(', ')}`,
-      strength: 'medium'
+      text: `Shared skills: ${commonSkills.slice(0, 4).join(', ')}`,
+      strength: commonSkills.length >= 5 ? 'high' : 'medium'
     });
   }
 
   if (myProfile.location && targetProfile.location) {
-    const myCity = myProfile.location.split(',')[0].trim();
-    const targetCity = targetProfile.location.split(',')[0].trim();
-    
-    if (myCity === targetCity) {
-      commonalities.push({
-        type: 'location',
-        text: `Both based in ${myCity}`,
-        strength: 'medium'
-      });
+    const myCity = myProfile.location.split(',')[0].trim().toLowerCase();
+    const targetCity = targetProfile.location.split(',')[0].trim().toLowerCase();
+    if (myCity && targetCity && myCity === targetCity) {
+      commonalities.push({ type: 'location', text: `Both based in ${myProfile.location.split(',')[0].trim()}`, strength: 'medium' });
     }
   }
 
   const myIndustry = extractIndustry(myProfile.headline || '');
   const targetIndustry = extractIndustry(targetProfile.headline || '');
-  
   if (myIndustry && targetIndustry && myIndustry === targetIndustry) {
-    commonalities.push({
-      type: 'industry',
-      text: `Both work in ${myIndustry}`,
-      strength: 'medium'
-    });
+    commonalities.push({ type: 'industry', text: `Both work in ${myIndustry}`, strength: 'medium' });
   }
 
   return commonalities;
 }
 
-function extractCompanies(experienceList) {
+function extractCompanies(list) {
   const companies = [];
-  experienceList.forEach(exp => {
-    if (typeof exp === 'object' && exp.company) {
-      companies.push(exp.company);
-    } else if (typeof exp === 'string') {
-      const lines = exp.split('\n');
-      if (lines.length >= 2) companies.push(lines[1].trim());
-    }
+  list.forEach(exp => {
+    if (typeof exp === 'object' && (exp.company || exp.company_name)) companies.push(exp.company || exp.company_name);
+    else if (typeof exp === 'string') { const l = exp.split('\n'); if (l.length >= 2) companies.push(l[1].trim()); }
   });
-  return [...new Set(companies)];
+  return [...new Set(companies.filter(Boolean))];
 }
 
-function extractSchools(educationList) {
+function extractSchools(list) {
   const schools = [];
-  educationList.forEach(edu => {
-    if (typeof edu === 'object' && edu.school) {
-      schools.push(edu.school);
-    } else if (typeof edu === 'string') {
-      const lines = edu.split('\n');
-      if (lines.length >= 1) schools.push(lines[0].trim());
-    }
+  list.forEach(edu => {
+    if (typeof edu === 'object' && (edu.school || edu.school_name || edu.name)) schools.push(edu.school || edu.school_name || edu.name);
+    else if (typeof edu === 'string') schools.push(edu.split('\n')[0].trim());
   });
-  return [...new Set(schools)];
+  return [...new Set(schools.filter(Boolean))];
 }
 
 function extractIndustry(headline) {
-  const industries = {
-    'engineer': 'Software Engineering',
-    'developer': 'Software Development',
-    'designer': 'Design',
-    'product': 'Product Management',
-    'marketing': 'Marketing',
-    'sales': 'Sales',
-    'data': 'Data Science',
-    'analyst': 'Analytics'
+  const map = {
+    'engineer': 'Software Engineering', 'developer': 'Software Development',
+    'designer': 'Design', 'product': 'Product Management',
+    'marketing': 'Marketing', 'sales': 'Sales', 'data': 'Data Science',
+    'analyst': 'Analytics', 'manager': 'Management', 'recruiter': 'Recruiting',
+    'consultant': 'Consulting', 'director': 'Leadership', 'devops': 'DevOps',
+    'cloud': 'Cloud Computing', 'security': 'Cybersecurity', 'ai': 'AI/ML'
   };
-
-  const headlineLower = headline.toLowerCase();
-  for (const [keyword, industry] of Object.entries(industries)) {
-    if (headlineLower.includes(keyword)) return industry;
-  }
+  const lower = headline.toLowerCase();
+  for (const [k, v] of Object.entries(map)) { if (lower.includes(k)) return v; }
   return null;
 }
 
 // ====================================================================
-// PAYMENT (Stripe) - Same as before
+// STRIPE PAYMENT
 // ====================================================================
 
 app.post('/api/create-checkout-session', async (req, res) => {
-  if (!STRIPE_SECRET_KEY) {
-    return res.status(500).json({ error: 'Stripe not configured' });
-  }
+  if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: 'Stripe not configured' });
 
   const userId = getUserId(req);
   const { planType } = req.body;
-
-  if (planType !== 'PREMIUM') {
-    return res.status(400).json({ error: 'Invalid plan type' });
-  }
+  if (planType !== 'PREMIUM') return res.status(400).json({ error: 'Invalid plan type' });
 
   try {
     const stripe = require('stripe')(STRIPE_SECRET_KEY);
-
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: PLANS.PREMIUM.stripeProductId,
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: PLANS.PREMIUM.stripeProductId, quantity: 1 }],
       success_url: `chrome-extension://${req.headers['x-extension-id']}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `chrome-extension://${req.headers['x-extension-id']}/popup.html`,
       client_reference_id: userId,
-      metadata: { userId: userId }
+      metadata: { userId }
     });
-
-    res.json({ 
-      success: true,
-      sessionId: session.id,
-      url: session.url 
-    });
-
+    res.json({ success: true, sessionId: session.id, url: session.url });
   } catch (error) {
     console.error('Stripe error:', error);
     res.status(500).json({ error: 'Failed to create checkout session' });
@@ -1015,39 +761,53 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
 app.post('/api/admin/activate-premium', (req, res) => {
   const { userId, days = 30 } = req.body;
-  const adminKey = req.headers['x-admin-key'];
-
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
 
   const usage = getUserUsage(userId);
   usage.isPremium = true;
-  
   const expiry = new Date();
   expiry.setDate(expiry.getDate() + days);
   usage.premiumExpiry = expiry.toISOString();
-  
   userUsage.set(userId, usage);
 
-  res.json({ 
-    success: true,
-    message: `Premium activated for ${days} days`,
-    expiry: usage.premiumExpiry
-  });
+  res.json({ success: true, message: `Premium activated for ${days} days`, expiry: usage.premiumExpiry });
 });
 
-// Error handling
+// Legacy endpoint
+app.post('/api/analyze', async (req, res) => {
+  try {
+    const { prompt, max_tokens = 1500 } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt required' });
+    if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'API key not configured' });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!response.ok) return res.status(response.status).json({ error: 'AI unavailable' });
+    const data = await response.json();
+    res.json({ success: true, content: data.content[0]?.text || '', usage: data.usage });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/stats', (req, res) => {
+  console.log('📊', { ...req.body, ts: new Date().toISOString() });
+  res.json({ success: true });
+});
+
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err);
   res.status(500).json({ error: 'Something went wrong' });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🤖 AI: Claude ${CLAUDE_API_KEY ? '✓' : '✗'}`);
+  console.log(`🤖 Claude: ${CLAUDE_API_KEY ? '✓' : '✗'}`);
   console.log(`📡 MCP: ${MCP_SERVER_URL}`);
+  console.log(`🔄 RapidAPI: ${RAPIDAPI_KEY ? '✓' : '✗'}`);
   console.log(`💳 Stripe: ${STRIPE_SECRET_KEY ? '✓' : '✗'}`);
-  console.log(`\n📊 Limits: Free ${PLANS.FREE.scrapesPerDay}/day, Premium ${PLANS.PREMIUM.scrapesPerDay}/day`);
+  console.log(`📊 Free ${PLANS.FREE.scrapesPerDay}/day | Premium ${PLANS.PREMIUM.scrapesPerDay}/day`);
 });
