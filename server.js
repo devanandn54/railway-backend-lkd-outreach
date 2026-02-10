@@ -646,7 +646,7 @@ app.get("/api/debug-mcp", async (req, res) => {
 app.get('/api/debug-scrape/:username', async (req, res) => {
   try {
     await mcp._ensureSession();
-    const raw = await mcp._send('tools/call', {
+    const raw = await mcp.callTool('tools/call', {
       name: 'get_person_profile',
       arguments: { linkedin_username: req.params.username }
     });
