@@ -497,7 +497,7 @@ async function scrapeProfile(url) {
 
   // Try MCP first
   try {
-    const rawProfile = await mcp.callTool('get_person_profile', { profile_url: url });
+    const rawProfile = await mcp.callTool('get_person_profile', { linkedin_username: username });
     const profile = normalizeProfile(rawProfile);
     console.log(`✅ MCP scraped: ${profile.name || username}`);
     return profile;
@@ -726,7 +726,8 @@ app.post('/api/scrape-company', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Valid LinkedIn company URL required' });
     }
     console.log(`🏢 Scraping company: ${url}`);
-    const companyData = await mcp.callTool('get_company_profile', { company_url: url });
+    const companyName = url.split('/company/')[1]?.split('/')[0]?.split('?')[0];
+    const companyData = await mcp.callTool('get_company_profile', { company_name: companyName });
     res.json({ success: true, data: companyData });
   } catch (error) {
     console.error('❌ Company scrape error:', error.message);
