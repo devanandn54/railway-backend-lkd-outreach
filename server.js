@@ -643,6 +643,19 @@ app.get("/api/debug-mcp", async (req, res) => {
     res.json({ ok: false, error: e.message });
   }
 });
+app.get('/api/debug-scrape/:username', async (req, res) => {
+  try {
+    await mcp._ensureSession();
+    const raw = await mcp._send('tools/call', {
+      name: 'get_person_profile',
+      arguments: { linkedin_username: req.params.username }
+    });
+    // Return the FULL raw response so we can see the exact structure
+    res.json({ raw: JSON.stringify(raw, null, 2) });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
 
 app.get('/api/user/status', (req, res) => {
   const userId = getUserId(req);
