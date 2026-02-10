@@ -645,13 +645,10 @@ app.get("/api/debug-mcp", async (req, res) => {
 });
 app.get('/api/debug-scrape/:username', async (req, res) => {
   try {
-    await mcp._ensureSession();
-    const raw = await mcp.callTool('tools/call', {
-      name: 'get_person_profile',
-      arguments: { linkedin_username: req.params.username }
+    const raw = await mcp.callTool('get_person_profile', { 
+      linkedin_username: req.params.username 
     });
-    // Return the FULL raw response so we can see the exact structure
-    res.json({ raw: JSON.stringify(raw, null, 2) });
+    res.json({ raw });
   } catch (e) {
     res.json({ error: e.message });
   }
